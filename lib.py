@@ -97,3 +97,22 @@ def vectorize_joined_basins(source, target, env):
         vec.writerecords(records)
 
     return 0
+
+
+def merge_shpfiles(source, target, env):
+    with fiona.open(str(source[0])) as inshp:
+        driver = inshp.driver
+        crs = inshp.crs
+        schema = inshp.schema
+
+    with fiona.open(str(target[0]), 'w',
+            driver=driver,
+            crs=crs,
+            schema=schema) as outshp:
+
+        for s in source:
+            with fiona.open(str(s)) as inshp:
+                for record in inshp:
+                    outshp.write(record)
+
+    return 0
