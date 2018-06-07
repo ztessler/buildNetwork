@@ -112,5 +112,5 @@ for delta in deltas:
 # merge individual basin shapefiles
 env.Command(
         source=shpfiles,
-        target=os.path.join(topoutput, 'full_domain', 'full_domain.shp'),
+        target=os.path.join(topoutput, 'full_domain', 'full_domain_{}.shp'.format(STNres)),
         action=lib.merge_shpfiles)
