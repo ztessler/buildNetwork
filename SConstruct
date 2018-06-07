@@ -23,7 +23,8 @@ delta = os.environ.get('DELTA', 'Mekong')
 STNdomain = os.environ.get('STNdomain', 'Asia')
 STNres = os.environ.get('STNres', '06min')
 
-initial_network = '/asrc/RGISarchive2/{domain}/Network/HydroSTN30/{res}/Static/{domain}_Network_HydroSTN30_{res}_Static.gdbn.gz'.format(domain=STNdomain, res=STNres)
+#initial_network = '/asrc/RGISarchive2/{domain}/Network/HydroSTN30/{res}/Static/{domain}_Network_HydroSTN30_{res}_Static.gdbn.gz'.format(domain=STNdomain, res=STNres)
+initial_network = '/asrc/ecr/balazs/Projects/2018/2018-05_HydroSTN30v100/RGISlocal/{domain}/Network/HydroSTN30ext/{res}/Static/{domain}_Network_HydroSTN30ext_{res}_Static.gdbn.gz'.format(domain=STNdomain, res=STNres)
 
 
 env.Command(
