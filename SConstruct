@@ -114,3 +114,11 @@ env.Command(
         source=shpfiles,
         target=os.path.join(topoutput, 'full_domain', 'full_domain_{}.shp'.format(STNres)),
         action=lib.merge_shpfiles)
+
+# dissolve and buffer
+env.Command(
+        source=[os.path.join(topoutput, 'full_domain', 'full_domain_{}.shp'.format(STNres)),
+                '/Users/ecr/ztessler/data/Coastline/GSHHG/gshhg-shp-2.3.6/GSHHS_shp/f/GSHHS_f_L1.shp'],
+        target=os.path.join(topoutput, 'full_domain', 'full_domain_buff_{}.shp'.format(STNres)),
+        action=lib.buffer_shpfile,
+        buffer_dist=0.25)

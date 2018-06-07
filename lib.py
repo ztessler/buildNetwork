@@ -7,6 +7,7 @@ import fiona
 import geopandas
 from affine import Affine
 import shapely.geometry as sgeom
+import shapely.ops as sops
 from rasterstats import zonal_stats
 
 
@@ -83,8 +84,8 @@ def vectorize_joined_basins(source, target, env):
 
     polys = shapes(data, mask=data.astype(rasterio.uint8), connectivity=8, transform=affine)
     geoms = [geom for (geom, val) in polys]
-    records = [{'properties': {'DELTA': delta},
-               'geometry': geom,
+    records = [{'properties': {'BASIN': delta},
+                'geometry': geom,
                } for geom in geoms]
 
     with fiona.open(str(target[0]), 'w',
@@ -92,7 +93,7 @@ def vectorize_joined_basins(source, target, env):
                     crs={'init':'epsg:4326'},
                     schema={
                         'geometry': 'Polygon',
-                        'properties': {'DELTA': 'str'},
+                        'properties': {'BASIN': 'str'},
                         }) as vec:
         vec.writerecords(records)
 
@@ -114,5 +115,37 @@ def merge_shpfiles(source, target, env):
             with fiona.open(str(s)) as inshp:
                 for record in inshp:
                     outshp.write(record)
+
+    return 0
+
+
+def buffer_shpfile(source, target, env):
+    buffer_dist = env['buffer_dist']
+
+    with fiona.open(str(source[1])) as coasts:
+        lands = [c for c in coasts if c['properties']['area'] > 10000]
+        land = [sgeom.shape(record['geometry']) for record in lands]
+        land = sgeom.MultiPolygon(land)
+
+
+    with fiona.open(str(source[0])) as inshp:
+        driver = inshp.driver
+        crs = inshp.crs
+        schema = inshp.schema
+
+        polys = [sgeom.shape(record['geometry']) for record in inshp]
+        multi = sgeom.MultiPolygon(polys)
+        dissolved = sops.unary_union(multi)
+        clipped = dissolved.intersection(land)
+        buffered = clipped.buffer(buffer_dist) # deg lat/lon
+
+        record = {'properties': {'BASIN': 'merged'},
+                  'geometry': sgeom.mapping(buffered)}
+
+        with fiona.open(str(target[0]), 'w',
+                driver=driver,
+                crs=crs,
+                schema=schema) as outshp:
+            outshp.write(record)
 
     return 0
