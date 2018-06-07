@@ -85,3 +85,16 @@ env.Command(
         source = os.path.join(work, '{}_Network_{}.trim.gdbn'.format(delta, STNres)),
         target = os.path.join(output, '{}_Network_{}.gdbn'.format(delta, STNres)),
         action = 'netBuild -t {delta}_Network_{res} -u "Network" -d {delta} $SOURCE $TARGET'.format(delta=delta, res=STNres))
+
+# export to asciigrid
+env.Command(
+        source = os.path.join(output, '{}_Network_{}.gdbn'.format(delta, STNres)),
+        target = os.path.join(work, '{}_Network_{}.asc'.format(delta, STNres)),
+        action = 'rgis2asciigrid $SOURCE $TARGET')
+
+# vectorize
+env.Command(
+        source = os.path.join(work, '{}_Network_{}.asc'.format(delta, STNres)),
+        target = os.path.join(output, '{}_{}.shp'.format(delta, STNres)),
+        action = lib.vectorize_joined_basins,
+        delta=delta)

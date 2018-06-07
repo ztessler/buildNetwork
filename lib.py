@@ -2,6 +2,8 @@ import numpy as np
 from collections import OrderedDict
 from netCDF4 import Dataset
 import rasterio
+from rasterio.features import shapes
+import fiona
 import geopandas
 from affine import Affine
 import shapely.geometry as sgeom
@@ -70,3 +72,28 @@ def delta_basins(env, target, source):
 
     return 0
 
+
+def vectorize_joined_basins(source, target, env):
+    delta = env['delta']
+    with rasterio.open(str(source[0])) as rast:
+        data = rast.read(1)
+        data[data == rast.nodata] = 0
+        data[data != 0] = 1
+        affine = rast.affine
+
+    polys = shapes(data, mask=data.astype(rasterio.uint8), connectivity=8, transform=affine)
+    geoms = [geom for (geom, val) in polys]
+    records = [{'properties': {'DELTA': delta},
+               'geometry': geom,
+               } for geom in geoms]
+
+    with fiona.open(str(target[0]), 'w',
+                    driver='ESRI Shapefile',
+                    crs={'init':'epsg:4326'},
+                    schema={
+                        'geometry': 'Polygon',
+                        'properties': {'DELTA': 'str'},
+                        }) as vec:
+        vec.writerecords(records)
+
+    return 0
