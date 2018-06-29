@@ -24,32 +24,36 @@ deltas = ['Mekong', 'Chao Phraya', 'Irrawaddy', 'Ganges', 'Brahmani', 'Mahanadi'
 
 STNdomain = os.environ.get('STNdomain', 'Asia')
 STNres = os.environ.get('STNres', '06min')
+if 'DELTA' in os.environ:
+    deltas = [os.environ['DELTA']]
 
 #initial_network = '/asrc/RGISarchive2/{domain}/Network/HydroSTN30/{res}/Static/{domain}_Network_HydroSTN30_{res}_Static.gdbn.gz'.format(domain=STNdomain, res=STNres)
-initial_network = '/asrc/ecr/balazs/Projects/2018/2018-05_HydroSTN30v100/RGISlocal/{domain}/Network/HydroSTN30ext/{res}/Static/{domain}_Network_HydroSTN30ext_{res}_Static.gdbn.gz'.format(domain=STNdomain, res=STNres)
+initial_network = '/asrc/ecr/balazs/Projects/2018/2018-06_HydroSTN30v100/RGISlocal/{domain}/Network/HydroSTN30ext/{res}/Static/{domain}_Network_HydroSTN30ext_{res}_Static.gdbn.gz'.format(domain=STNdomain, res=STNres)
 
 shpfiles = []
 
 for delta in deltas:
     dname = delta.replace(' ','_')
-    work = os.path.join(topwork, dname)
-    output = os.path.join(topoutput, dname)
+    work = os.path.join(topwork, dname, STNres)
+    output = os.path.join(topoutput, dname, STNres)
+
+    inidomain_work = os.path.join(topwork, STNdomain, STNres)
 
     env.Command(
             source = initial_network,
-            target = os.path.join(work, '{domain}_{res}.1.gdbc'.format(domain=STNdomain, res=STNres)),
+            target = os.path.join(inidomain_work, '{domain}_{res}.1.gdbc'.format(domain=STNdomain, res=STNres)),
             action='netCells2Grid -f BasinID -t BasinID -u BasinID -d Global $SOURCE $TARGET')
     env.Command(
-            source = os.path.join(work, '{domain}_{res}.1.gdbc'.format(domain=STNdomain, res=STNres)),
-            target = os.path.join(work, '{domain}_{res}.2.gdbc'.format(domain=STNdomain, res=STNres)),
+            source = os.path.join(inidomain_work, '{domain}_{res}.1.gdbc'.format(domain=STNdomain, res=STNres)),
+            target = os.path.join(inidomain_work, '{domain}_{res}.2.gdbc'.format(domain=STNdomain, res=STNres)),
             action='grdRenameLayers -r 1 XXXX $SOURCE $TARGET')
     env.Command(
-            source = os.path.join(work, '{domain}_{res}.2.gdbc'.format(domain=STNdomain, res=STNres)),
-            target = os.path.join(work, '{domain}_{res}.nc'.format(domain=STNdomain, res=STNres)),
+            source = os.path.join(inidomain_work, '{domain}_{res}.2.gdbc'.format(domain=STNdomain, res=STNres)),
+            target = os.path.join(inidomain_work, '{domain}_{res}.nc'.format(domain=STNdomain, res=STNres)),
             action='rgis2netcdf $SOURCE $TARGET')
     env.Command(
-            source = os.path.join(work, '{domain}_{res}.nc'.format(domain=STNdomain, res=STNres)),
-            target = os.path.join(work, '{domain}_{res}.tif'.format(domain=STNdomain, res=STNres)),
+            source = os.path.join(inidomain_work, '{domain}_{res}.nc'.format(domain=STNdomain, res=STNres)),
+            target = os.path.join(inidomain_work, '{domain}_{res}.tif'.format(domain=STNdomain, res=STNres)),
             action = lib.georef_nc_to_tif)
 
     # get delta extents
@@ -64,7 +68,7 @@ for delta in deltas:
     # write those to file, or print out
     env.Command(
             source = [os.path.join(work, '{}.json'.format(dname)),
-                      os.path.join(work, '{}_{}.tif'.format(STNdomain, STNres))],
+                      os.path.join(inidomain_work, '{}_{}.tif'.format(STNdomain, STNres))],
             target = os.path.join(work, '{}_basins_{}_{}.txt'.format(dname, STNres, STNdomain)),
             action = lib.delta_basins,
             delta = delta)
