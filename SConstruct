@@ -8,6 +8,7 @@
 import os
 import sys
 import lib
+import hashlib
 
 SetOption('max_drift', 1)
 
@@ -20,15 +21,40 @@ topwork = 'work'
 topoutput = 'output'
 
 #deltas = ['Mekong', 'Chao Phraya']
-deltas = ['Mekong', 'Chao Phraya', 'Irrawaddy', 'Ganges', 'Brahmani', 'Mahanadi', 'Godavari', 'Krishna']
+alldeltas = ['Mekong', 'Chao Phraya', 'Irrawaddy', 'Ganges', 'Brahmani', 'Mahanadi', 'Godavari', 'Krishna']
 
 STNdomain = os.environ.get('STNdomain', 'Asia')
 STNres = os.environ.get('STNres', '06min')
 if 'DELTA' in os.environ:
     deltas = [os.environ['DELTA']]
+    # use "SSEA" for complete SSEA coastline
+else:
+    deltas = alldeltas
 
-#initial_network = '/asrc/RGISarchive2/{domain}/Network/HydroSTN30/{res}/Static/{domain}_Network_HydroSTN30_{res}_Static.gdbn.gz'.format(domain=STNdomain, res=STNres)
-initial_network = '/asrc/ecr/balazs/Projects/2018/2018-06_HydroSTN30v100/RGISlocal/{domain}/Network/HydroSTN30ext/{res}/Static/{domain}_Network_HydroSTN30ext_{res}_Static.gdbn.gz'.format(domain=STNdomain, res=STNres)
+### Get initial network by opening this file (global version):
+# '/asrc/ecr/balazs/Projects/2018/2018-10_HydroSTN30v100/RGISlocal/{domain}/Network/HydroSTN30ext/{res}/Static/{domain}_Network_HydroSTN30ext_{res}_Static.gdbn.gz'.format(domain=STNdomain, res=STNres)
+# and adding Mouth coords, saving to similar path in RGISlocal
+initial_network = os.path.join('../../RGISlocal/Global/Network/HydroSTN30ext/{res}/Static/Global_Network_HydroSTN30ext_{res}_Static.gdbn'.format(res=STNres))
+
+
+def myCommand(target, source, action, **kwargs):
+    '''
+    env.Command wrapper that forces env override arguments to be sconsign
+    signature database. Wraps all extra kwargs in env.Value nodes and adds
+    them to the source list, after the existing sources. Changing the extra
+    arguments will cause the target to be rebuilt, as long as the data's string
+    representation changes.
+    '''
+    def hash(v):
+        # if this is changed then all targets with env overrides will be rebuilt
+        return hashlib.md5(repr(v).encode('utf-8')).hexdigest()
+    if not isinstance(source, list):
+        source = [source]
+    if None in source:
+        source.remove(None)
+    kwargs['nsources'] = len(source)
+    source.extend([env.Value('{}={}'.format(k,hash(v))) for k,v in kwargs.items()])
+    return env.Command(target=target, source=source, action=action, **kwargs)
 
 shpfiles = []
 
@@ -58,20 +84,34 @@ for delta in deltas:
 
     # get delta extents
     # group all the little shapes together (geo.group_delta_shps)
-    env.Command(
-            source = '/Users/ecr/ztessler/data/deltas_LCLUC/maps/global_map_shp/global_map.shp',
-            target = os.path.join(work, '{}.json'.format(dname)),
-            action = lib.group_delta_shps,
-            delta = delta)
+    if delta != 'SSEA':
+        env.Command(
+                source = '/Users/ecr/ztessler/data/deltas_LCLUC/maps/global_map_shp/global_map.shp',
+                target = os.path.join(work, '{}.json'.format(dname)),
+                action = lib.group_delta_shps,
+                delta = delta)
 
-    # find all contributing basins (geo.contributing basins)
-    # write those to file, or print out
-    env.Command(
-            source = [os.path.join(work, '{}.json'.format(dname)),
-                      os.path.join(inidomain_work, '{}_{}.tif'.format(STNdomain, STNres))],
-            target = os.path.join(work, '{}_basins_{}_{}.txt'.format(dname, STNres, STNdomain)),
-            action = lib.delta_basins,
-            delta = delta)
+        # find all contributing basins (geo.contributing basins)
+        # write those to file, or print out
+        env.Command(
+                source = [os.path.join(work, '{}.json'.format(dname)),
+                          os.path.join(inidomain_work, '{}_{}.tif'.format(STNdomain, STNres))],
+                target = os.path.join(work, '{}_basins_{}_{}.txt'.format(dname, STNres, STNdomain)),
+                action = lib.delta_basins,
+                delta = delta)
+    else:
+        # walk along SSEA coastline finding all basins that dischage to coast
+        mouths = os.path.join(inidomain_work, 'mouth_cells_global_{}.csv'.format(STNres))
+        env.Command(
+                source=initial_network,
+                target=mouths,
+                action='rgis2table $SOURCE | sed \'s/\\t/,/g\' > $TARGET')
+
+        myCommand(
+                source=mouths,
+                target=os.path.join(work, '{}_basins_{}_{}.txt'.format(dname, STNres, STNdomain)),
+                action=lib.mouths_in_ssea,
+                bbox=(72, 110, 6, 24)) # (lonmin, lonmax, latmin, latmax)
 
     # extract basins from network (gives a table)
     env.Command(
@@ -113,16 +153,17 @@ for delta in deltas:
             delta=delta)
     shpfiles.append(shpfile)
 
-# merge individual basin shapefiles
-env.Command(
-        source=shpfiles,
-        target=os.path.join(topoutput, 'full_domain', 'full_domain_{}.shp'.format(STNres)),
-        action=lib.merge_shpfiles)
+if deltas == alldeltas:
+    # merge individual basin shapefiles
+    env.Command(
+            source=shpfiles,
+            target=os.path.join(topoutput, 'full_domain', 'full_domain_{}.shp'.format(STNres)),
+            action=lib.merge_shpfiles)
 
-# dissolve and buffer
-env.Command(
-        source=[os.path.join(topoutput, 'full_domain', 'full_domain_{}.shp'.format(STNres)),
-                '/Users/ecr/ztessler/data/Coastline/GSHHG/gshhg-shp-2.3.6/GSHHS_shp/f/GSHHS_f_L1.shp'],
-        target=os.path.join(topoutput, 'full_domain', 'full_domain_buff_{}.shp'.format(STNres)),
-        action=lib.buffer_shpfile,
-        buffer_dist=0.25)
+    # dissolve and buffer
+    env.Command(
+            source=[os.path.join(topoutput, 'full_domain', 'full_domain_{}.shp'.format(STNres)),
+                    '/Users/ecr/ztessler/data/Coastline/GSHHG/gshhg-shp-2.3.6/GSHHS_shp/f/GSHHS_f_L1.shp'],
+            target=os.path.join(topoutput, 'full_domain', 'full_domain_buff_{}.shp'.format(STNres)),
+            action=lib.buffer_shpfile,
+            buffer_dist=0.25)

@@ -1,4 +1,5 @@
 import numpy as np
+import pandas
 from collections import OrderedDict
 from netCDF4 import Dataset
 import rasterio
@@ -80,7 +81,7 @@ def vectorize_joined_basins(source, target, env):
         data = rast.read(1)
         data[data == rast.nodata] = 0
         data[data != 0] = 1
-        affine = rast.affine
+        affine = rast.transform
 
     polys = shapes(data, mask=data.astype(rasterio.uint8), connectivity=8, transform=affine)
     geoms = [geom for (geom, val) in polys]
@@ -148,4 +149,16 @@ def buffer_shpfile(source, target, env):
                 schema=schema) as outshp:
             outshp.write(record)
 
+    return 0
+
+
+def mouths_in_ssea(source, target, env):
+    mouths = pandas.read_csv(str(source[0]))
+    lonmin, lonmax, latmin, latmax = env['bbox']
+
+    ssea = mouths[(mouths['MouthXCoord'] >= lonmin) &
+                  (mouths['MouthXCoord'] <= lonmax) &
+                  (mouths['MouthYCoord'] >= latmin) &
+                  (mouths['MouthYCoord'] <= latmax)]
+    ssea.to_csv(str(target[0]), columns=['ID'], index=False, header=False)
     return 0
