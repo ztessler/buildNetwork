@@ -32,10 +32,7 @@ if 'DELTA' in os.environ:
 else:
     deltas = alldeltas
 
-### Get initial network by opening this file (global version):
-# '/asrc/ecr/balazs/Projects/2018/2018-10_HydroSTN30v100/RGISlocal/{domain}/Network/HydroSTN30ext/{res}/Static/{domain}_Network_HydroSTN30ext_{res}_Static.gdbn.gz'.format(domain=STNdomain, res=STNres)
-# and adding Mouth coords, saving to similar path in RGISlocal
-initial_network = os.path.join('../../RGISlocal/Global/Network/HydroSTN30ext/{res}/Static/Global_Network_HydroSTN30ext_{res}_Static.gdbn'.format(res=STNres))
+initial_network = '/asrc/RGISarchive2/{domain}/Network/HydroSTN30/{res}/Static/{domain}_Network_HydroSTN30_{res}_Static.gdbn.gz'.format(domain=STNdomain, res=STNres)
 
 
 def myCommand(target, source, action, **kwargs):
@@ -101,7 +98,7 @@ for delta in deltas:
                 action = lib.delta_basins,
                 delta = delta)
         env.Command(
-                source = [os.path.join(work, '{}_basins_{}_{}.txt'.format(dname, STNres, STNdomain)),
+                source = [os.path.join(work, '{}_keep_basins_{}_{}.txt'.format(dname, STNres, STNdomain)),
                           initial_network],
                 target = os.path.join(work, '{}_Network_{}_{}.gdbt'.format(dname, STNres, STNdomain)),
                 action = 'xargs -a ${SOURCES[0]} -n 1 -I{} echo BasinID != {} "&&" | tr "\\n" " " | xargs -I{} tblDeleteRec -a DBCells -c \"{} BasinID != -8888\" ${SOURCES[1]} $TARGET')
