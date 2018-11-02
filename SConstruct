@@ -14,7 +14,8 @@ SetOption('max_drift', 1)
 
 env = Environment(ENV = {'PATH' : os.environ['PATH'],
                          'GDAL_DATA': os.environ['GDAL_DATA'],
-                         })
+                         },
+                  SHELL = '/bin/bash')
 env.Decider('MD5-timestamp')
 
 topwork = 'work'
@@ -96,9 +97,14 @@ for delta in deltas:
         env.Command(
                 source = [os.path.join(work, '{}.json'.format(dname)),
                           os.path.join(inidomain_work, '{}_{}.tif'.format(STNdomain, STNres))],
-                target = os.path.join(work, '{}_basins_{}_{}.txt'.format(dname, STNres, STNdomain)),
+                target = os.path.join(work, '{}_keep_basins_{}_{}.txt'.format(dname, STNres, STNdomain)),
                 action = lib.delta_basins,
                 delta = delta)
+        env.Command(
+                source = [os.path.join(work, '{}_basins_{}_{}.txt'.format(dname, STNres, STNdomain)),
+                          initial_network],
+                target = os.path.join(work, '{}_Network_{}_{}.gdbt'.format(dname, STNres, STNdomain)),
+                action = 'xargs -a ${SOURCES[0]} -n 1 -I{} echo BasinID != {} "&&" | tr "\\n" " " | xargs -I{} tblDeleteRec -a DBCells -c \"{} BasinID != -8888\" ${SOURCES[1]} $TARGET')
     else:
         # walk along SSEA coastline finding all basins that dischage to coast
         mouths = os.path.join(inidomain_work, 'mouth_cells_global_{}.csv'.format(STNres))
@@ -106,19 +112,72 @@ for delta in deltas:
                 source=initial_network,
                 target=mouths,
                 action='rgis2table $SOURCE | sed \'s/\\t/,/g\' > $TARGET')
-
+        bbox = (72, 110, 6, 24)
         myCommand(
                 source=mouths,
-                target=os.path.join(work, '{}_basins_{}_{}.txt'.format(dname, STNres, STNdomain)),
+                target=os.path.join(work, '{}_keep_basins_{}_{}.txt'.format(dname, STNres, STNdomain)),
                 action=lib.mouths_in_ssea,
-                bbox=(72, 110, 6, 24)) # (lonmin, lonmax, latmin, latmax)
+                bbox=bbox) # (lonmin, lonmax, latmin, latmax)
 
-    # extract basins from network (gives a table)
-    env.Command(
-            source = [os.path.join(work, '{}_basins_{}_{}.txt'.format(dname, STNres, STNdomain)),
-                      initial_network],
-            target = os.path.join(work, '{}_Network_{}_{}.gdbt'.format(dname, STNres, STNdomain)),
-            action = 'xargs -a ${SOURCES[0]} -n 1 -i echo BasinID != {} "&&" | tr "\\n" " " | xargs -i tblDeleteRec -a DBCells -c \"{} BasinID != -8888\" ${SOURCES[1]} $TARGET')
+        # extract basins from network (gives a table)
+        # NOTE this command deletes all not-equal-to-ones-to-keep. ok if few basins to keep. too many overflows xargs
+        #env.Command(
+                #source = [os.path.join(work, '{}_basins_{}_{}.txt'.format(dname, STNres, STNdomain)),
+                          #initial_network],
+                #target = os.path.join(work, '{}_Network_{}_{}.gdbt'.format(dname, STNres, STNdomain)),
+                #action = 'xargs -a ${SOURCES[0]} -n 1 -I{} echo BasinID != {} "&&" | tr "\\n" " " | xargs -I{} tblDeleteRec -a DBCells -c \"{} BasinID != -8888\" ${SOURCES[1]} $TARGET')
+        # NOTE use these for lots of basins to keep
+        #env.Command(
+                #source=initial_network,
+                #target=os.path.join(work, '{}_all_basins_{}_{}.txt'.format(dname, STNres, STNdomain)),
+                #action='rgis2table $SOURCE | FCut -f ID | tail -n +2 > $TARGET')
+        #env.Command(
+                #source=[os.path.join(work, '{}_all_basins_{}_{}.txt'.format(dname, STNres, STNdomain)),
+                        #os.path.join(work, '{}_keep_basins_{}_{}.txt'.format(dname, STNres, STNdomain))],
+                #target=os.path.join(work, '{}_delete_basins_{}_{}.txt'.format(dname, STNres, STNdomain)),
+                #action='comm -23 <(sort ${SOURCES[0]}) <(sort ${SOURCES[1]}) | sort -n > $TARGET')
+        # this command splits the long list of basins to delete up into chunks and runs tblDeleteRec several times
+        #env.Command(
+                #source = [os.path.join(work, '{}_delete_basins_{}_{}.txt'.format(dname, STNres, STNdomain)),
+                          #initial_network],
+                #target = os.path.join(work, '{}_Network_{}_{}.gdbt'.format(dname, STNres, STNdomain)),
+                #action=['cp ${SOURCES[1]} $TARGET',
+                        #'awk \'{printf "BasinID == %s || \\n", $$1}\' ${SOURCES[0]} | xargs -L1000 -d "\\n" | xargs -I{} tblDeleteRec -a DBCells -c \"{} BasinID == -8888\" $TARGET $TARGET'])
+        # NOTE but that's too slow so instead first select in chunks, then delete selection
+        #env.Command(
+                #source = [os.path.join(work, '{}_keep_basins_{}_{}.txt'.format(dname, STNres, STNdomain)),
+                          #initial_network],
+                #target = os.path.join(work, '{}_Network_{}_{}.gdbt'.format(dname, STNres, STNdomain)),
+                #action=[# copy to ramdisk
+                        #'cp ${SOURCES[1]} /dev/shm/network',
+                        ## select all rows
+                        #'tblSelectRec -a DBCells -m select /dev/shm/network /dev/shm/network',
+                        ## unselect rows to keep, with a counter and progress estimates
+                        #'echo $$(wc -l ${SOURCES[0]}) | cut -d" " -f 1 | tee /tmp/nlines',
+                        #'echo 0 > /tmp/count',
+                        #'awk \'{printf "BasinID == %s || \\n", $$1}\' ${SOURCES[0]} | xargs -L50 -d "\\n" | xargs -I{} bash -c \'i=$$(cat /tmp/count); n=$$(cat /tmp/nlines); tblSelectRec -a DBCells -m unselect -f selection -c \"{} BasinID == -8888\" /dev/shm/network /dev/shm/network; i=$$((i+1)); echo "$$(date +%H:%M:%S), Iteration: $${i}, Selected $$((50*i)) basins, $$(((50*i*100)/n))% done."; echo $$i>/tmp/count\'',
+                        ## delete remaining selected rows
+                        #'tblDeleteRec -a DBCells -s /dev/shm/network /dev/shm/network'
+                        ## copy back to TARGET
+                        #'mv /dev/shm/network $TARGET'])
+        # NOTE thats also crazy slow
+        # another way: use new tblAddIDXY to add mouthxy coords to basins
+        # then use tblJoinTables to get mouthxy coords onto cell table
+        # then use simple tblDeleteRec to remove cells that are outside original bounding box
+        env.Command(
+                source=initial_network,
+                target=os.path.join(inidomain_work, 'network_with_mouthXY.gdbn'),
+                action='/Users/ecr/ztessler/opt/ghaas_anthro/ghaas/bin/tblAddIdXY -a DBItems -f BasinID -x MouthXCoord -y MouthYCoord $SOURCE $TARGET')
+        env.Command(
+                source=os.path.join(inidomain_work, 'network_with_mouthXY.gdbn'),
+                target=os.path.join(inidomain_work, 'network_with_mouthXY_on_dbcells.gdbn'),
+                action='tblJoinTables -e DBCells -o DBItems -r BasinID -j BasinID $SOURCE $TARGET')
+        env.Command(
+                source=os.path.join(inidomain_work, 'network_with_mouthXY_on_dbcells.gdbn'),
+                target=os.path.join(work, '{}_Network_{}_{}.gdbt'.format(dname, STNres, STNdomain)),
+                action='tblDeleteRec -a DBCells -c "MouthXCoord < {0} || MouthXCoord > {1} || MouthYCoord < {2} || MouthYCoord > {3}" $SOURCE $TARGET'.format(*bbox))
+
+
 
     # build, trim, rebuild network
     env.Command(
