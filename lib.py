@@ -45,6 +45,7 @@ def group_delta_shps(env, target, source):
                        'DeltaID': lambda s: s.iloc[0],
                        'geometry': lambda s: sgeom.MultiPolygon(list(s)),
                         })
+    deltas.index = [name.replace(' ','_') for name in deltas.index]
     delta = geopandas.GeoDataFrame(deltas.loc[delta,:]).T
     delta['Delta'] = delta.index #index lost on saving to file
     delta.crs = crs
