@@ -22,7 +22,8 @@ topwork = 'work'
 topoutput = 'output'
 
 #deltas = ['Mekong', 'Chao Phraya']
-alldeltas = ['Mekong', 'Chao Phraya', 'Irrawaddy', 'Ganges', 'Brahmani', 'Mahanadi', 'Godavari', 'Krishna']
+alldeltas = ['Mekong', 'Chao Phraya', 'Irrawaddy', 'Ganges', 'Brahmani', 'Mahanadi', 'Godavari',
+             'Krishna', 'SSEA']
 
 STNdomain = os.environ.get('STNdomain', 'Asia')
 STNres = os.environ.get('STNres', '06min')
@@ -87,7 +88,7 @@ for delta in deltas:
                 source = '/Users/ecr/ztessler/data/deltas_LCLUC/maps/global_map_shp/global_map.shp',
                 target = os.path.join(work, '{}.json'.format(dname)),
                 action = lib.group_delta_shps,
-                delta = delta)
+                delta = dname)
 
         # find all contributing basins (geo.contributing basins)
         # write those to file, or print out
@@ -96,7 +97,7 @@ for delta in deltas:
                           os.path.join(inidomain_work, '{}_{}.tif'.format(STNdomain, STNres))],
                 target = os.path.join(work, '{}_keep_basins_{}_{}.txt'.format(dname, STNres, STNdomain)),
                 action = lib.delta_basins,
-                delta = delta)
+                delta = dname)
         env.Command(
                 source = [os.path.join(work, '{}_keep_basins_{}_{}.txt'.format(dname, STNres, STNdomain)),
                           initial_network],
@@ -111,7 +112,7 @@ for delta in deltas:
         env.Command(
                 source=initial_network,
                 target=os.path.join(inidomain_work, 'network_with_mouthXY.gdbn'),
-                action='/Users/ecr/ztessler/opt/ghaas_anthro/ghaas/bin/tblAddIdXY -a DBItems -f BasinID -x MouthXCoord -y MouthYCoord $SOURCE $TARGET')
+                action='tblAddIdXY -a DBItems -f BasinID -x MouthXCoord -y MouthYCoord $SOURCE $TARGET')
         env.Command(
                 source=os.path.join(inidomain_work, 'network_with_mouthXY.gdbn'),
                 target=os.path.join(inidomain_work, 'network_with_mouthXY_on_dbcells.gdbn'),
@@ -136,8 +137,14 @@ for delta in deltas:
     # rebuild
     env.Command(
             source = os.path.join(work, '{}_Network_{}.trim.gdbn'.format(dname, STNres)),
-            target = os.path.join(output, '{}_Network_{}.gdbn'.format(dname, STNres)),
+            target = os.path.join(output, '{}_Network_{}.0.gdbn'.format(dname, STNres)),
             action = 'netBuild -t {dname}_Network_{res} -u "Network" -d {dname} $SOURCE $TARGET'.format(dname=dname, res=STNres))
+
+    # add XY to cells, needed later in osm_rivers, doesnt hurt to have
+    env.Command(
+            source= os.path.join(output, '{}_Network_{}.0.gdbn'.format(dname, STNres)),
+            target= os.path.join(output, '{}_Network_{}.gdbn'.format(dname, STNres)),
+            action = 'tblAddIdXY -a DBCells $SOURCE $TARGET')
 
     # export to asciigrid
     env.Command(
@@ -151,7 +158,7 @@ for delta in deltas:
             source = os.path.join(work, '{}_Network_{}.asc'.format(dname, STNres)),
             target = shpfile,
             action = lib.vectorize_joined_basins,
-            delta=delta)
+            delta = dname)
     shpfiles.append(shpfile)
 
 if deltas == alldeltas:
