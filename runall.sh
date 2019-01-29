@@ -6,5 +6,5 @@ for RES in ${RESs[@]}
 do
 	export STNdomain=Asia
 	export STNres=$RES
-	scons -i
+	scons -i -j 4
 done
